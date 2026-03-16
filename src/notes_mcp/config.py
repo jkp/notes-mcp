@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     github_client_secret: str | None = None
     oauth_base_url: str | None = None
     oauth_allowed_users: str | None = None
+    oauth_state_dir: Path | None = None
 
     # PARA bucket names (configurable to match vault naming convention)
     para_bucket_names: str = "projects,areas,resources,archive"
