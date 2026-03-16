@@ -11,7 +11,7 @@ from notes_mcp.logging import configure_logging
 from notes_mcp.search import RipgrepSearcher
 
 settings = Settings()
-configure_logging(settings.log_level)
+configure_logging(settings.log_level, ntfy_url=settings.ntfy_url, ntfy_topic=settings.ntfy_topic)
 
 logger = structlog.get_logger()
 
@@ -122,6 +122,7 @@ def main() -> None:
         port=settings.port,
         vault=str(settings.vault),
         auth_enabled=settings.github_client_id is not None,
+        log_level=settings.log_level,
     )
     if settings.transport == "http":
         mcp.run(transport="http", host=settings.host, port=settings.port)

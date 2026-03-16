@@ -15,6 +15,10 @@ class Settings(BaseSettings):
     vault_path: Path = Path("~/notes")
     rg_bin: str = "rg"
 
+    # NTFY push notifications (empty URL = disabled)
+    ntfy_url: str = ""
+    ntfy_topic: str = ""
+
     # Server
     transport: Literal["stdio", "http"] = "stdio"
     host: str = "0.0.0.0"
