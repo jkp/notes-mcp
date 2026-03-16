@@ -6,7 +6,7 @@ from pathlib import Path
 import structlog
 
 from notes_mcp.frontmatter import parse_frontmatter, serialize_frontmatter
-from notes_mcp.models import Note, NoteListEntry
+from notes_mcp.models import DirectoryEntry, Note, NoteListEntry
 
 logger = structlog.get_logger()
 
@@ -94,6 +94,111 @@ def list_notes(vault: Path, rel_path: str = "") -> list[NoteListEntry]:
             logger.warning("vault.list.skip", path=str(f), exc_info=True)
 
     return entries
+
+
+def _is_hidden(name: str) -> bool:
+    """Check if a file/directory name is hidden (starts with '.')."""
+    return name.startswith(".")
+
+
+def _has_hidden_component(rel_path: str) -> bool:
+    """Check if any component of a relative path is hidden."""
+    return any(_is_hidden(part) for part in Path(rel_path).parts)
+
+
+def list_directory(
+    vault: Path,
+    rel_path: str = "",
+    recursive: bool = False,
+    include_metadata: bool = True,
+    max_depth: int = 10,
+) -> list[DirectoryEntry]:
+    """List files and directories in a vault path.
+
+    Returns sorted entries (directories first, then files, alphabetical).
+    Skips hidden entries. Returns empty list for non-existent or hidden dirs.
+    Raises PathSecurityError if path escapes vault.
+    """
+    # Validate path first (raises on traversal) before hidden check
+    target = _validate_path(vault, rel_path) if rel_path else vault
+
+    if rel_path and _has_hidden_component(rel_path):
+        return []
+
+    if not target.is_dir():
+        return []
+
+    return _list_dir_recursive(vault, target, recursive, include_metadata, max_depth, 0)
+
+
+def _list_dir_recursive(
+    vault: Path,
+    target: Path,
+    recursive: bool,
+    include_metadata: bool,
+    max_depth: int,
+    current_depth: int,
+) -> list[DirectoryEntry]:
+    """Internal recursive directory listing."""
+    dirs: list[DirectoryEntry] = []
+    files: list[DirectoryEntry] = []
+
+    for item in sorted(target.iterdir()):
+        if _is_hidden(item.name):
+            continue
+        # Skip symlinks that escape the vault
+        if item.is_symlink():
+            try:
+                resolved = item.resolve()
+                if not str(resolved).startswith(str(vault.resolve())):
+                    continue
+            except OSError:
+                continue
+
+        rel = str(item.relative_to(vault))
+
+        if item.is_dir():
+            children = None
+            if recursive and current_depth < max_depth:
+                children = _list_dir_recursive(
+                    vault, item, recursive, include_metadata, max_depth, current_depth + 1
+                )
+            dirs.append(
+                DirectoryEntry(path=rel, name=item.name, type="directory", children=children)
+            )
+        elif item.is_file() and item.suffix == ".md":
+            fm = None
+            if include_metadata:
+                try:
+                    content = item.read_text(encoding="utf-8")
+                    fm, _ = parse_frontmatter(content)
+                except Exception:
+                    logger.warning("vault.list_directory.skip", path=rel, exc_info=True)
+            files.append(
+                DirectoryEntry(path=rel, name=item.name, type="file", frontmatter=fm)
+            )
+
+    return dirs + files
+
+
+def path_exists(vault: Path, rel_path: str) -> tuple[bool, str | None]:
+    """Check if a path exists within the vault.
+
+    Returns (exists, type) where type is 'file' or 'directory'.
+    Raises PathSecurityError if path escapes vault.
+    Rejects hidden paths.
+    """
+    # Validate path first (raises on traversal) before hidden check
+    full = _validate_path(vault, rel_path)
+
+    if _has_hidden_component(rel_path):
+        return (False, None)
+
+    if full.is_file():
+        return (True, "file")
+    if full.is_dir():
+        return (True, "directory")
+    return (False, None)
 
 
 def move_note(vault: Path, from_path: str, to_path: str) -> str:
