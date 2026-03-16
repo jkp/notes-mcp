@@ -1,5 +1,7 @@
 """Pydantic models for notes, search results, and link info."""
 
+from typing import Literal
+
 from pydantic import BaseModel, Field
 
 
@@ -38,6 +40,16 @@ class LinkInfo(BaseModel):
     path: str
     title: str
     snippet: str | None = None
+
+
+class DirectoryEntry(BaseModel):
+    """An entry in a vault directory listing."""
+
+    path: str
+    name: str
+    type: Literal["file", "directory"]
+    frontmatter: Frontmatter | None = None
+    children: list["DirectoryEntry"] | None = None
 
 
 class NoteListEntry(BaseModel):
