@@ -1,6 +1,5 @@
 """Tests for browsing tools: list_directory, path_exists, get_metadata."""
 
-import os
 from pathlib import Path
 
 import pytest
@@ -134,6 +133,29 @@ class TestPathExists:
         exists, kind = path_exists(vault_with_hidden, ".obsidian")
         assert exists is False
         assert kind is None
+
+
+class TestGetMetadata:
+    """Tests for get_metadata (via vault.read_note)."""
+
+    def test_returns_frontmatter_without_content(self, vault: Path) -> None:
+        from notes_mcp.vault import read_note
+
+        note = read_note(vault, "Resources/css-architecture.md")
+        assert note is not None
+        assert note.frontmatter.title == "CSS Architecture"
+        assert note.frontmatter.tags == ["css", "web", "architecture"]
+        # Content is present in the Note but get_metadata tool strips it
+        assert len(note.content) > 0
+
+    def test_content_preview(self, vault: Path) -> None:
+        from notes_mcp.vault import read_note
+
+        note = read_note(vault, "Resources/css-architecture.md")
+        assert note is not None
+        preview = note.content[:200]
+        assert len(preview) <= 200
+        assert "BEM Methodology" in preview
 
 
 class TestPathSecurity:

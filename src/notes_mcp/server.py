@@ -86,6 +86,7 @@ mcp = FastMCP(
 )
 
 # Import tools to register them with the mcp instance
+import notes_mcp.tools.browsing  # noqa: F401, E402
 import notes_mcp.tools.navigating  # noqa: F401, E402
 import notes_mcp.tools.organizing  # noqa: F401, E402
 import notes_mcp.tools.reading  # noqa: F401, E402
