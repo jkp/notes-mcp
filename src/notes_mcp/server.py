@@ -135,6 +135,6 @@ def main() -> None:
         log_level=settings.log_level,
     )
     if settings.transport == "http":
-        mcp.run(transport="http", host=settings.host, port=settings.port)
+        mcp.run(transport="http", host=settings.host, port=settings.port, stateless_http=True)
     else:
         mcp.run()
