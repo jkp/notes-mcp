@@ -52,6 +52,15 @@ class DirectoryEntry(BaseModel):
     children: list["DirectoryEntry"] | None = None
 
 
+class EditResult(BaseModel):
+    """Result of an edit_note operation."""
+
+    path: str
+    title: str
+    updated: str | None = None
+    replacements: int = 0
+
+
 class NoteListEntry(BaseModel):
     """Summary metadata for listing notes."""
 

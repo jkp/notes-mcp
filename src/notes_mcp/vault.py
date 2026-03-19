@@ -6,7 +6,7 @@ from pathlib import Path
 import structlog
 
 from notes_mcp.frontmatter import parse_frontmatter, serialize_frontmatter
-from notes_mcp.models import DirectoryEntry, Note, NoteListEntry
+from notes_mcp.models import DirectoryEntry, EditResult, Note, NoteListEntry
 
 logger = structlog.get_logger()
 
@@ -62,6 +62,129 @@ def write_note(vault: Path, rel_path: str, content: str) -> Note:
 
     title = fm.title or full.stem
     return Note(path=rel_path, title=title, frontmatter=fm, content=body)
+
+
+def edit_note(
+    vault: Path,
+    rel_path: str,
+    old_text: str,
+    new_text: str,
+    replace_all: bool = False,
+) -> EditResult:
+    """Search and replace text in a note's body, preserving frontmatter.
+
+    Raises:
+        FileNotFoundError: Note doesn't exist.
+        ValueError: old_text not found, or ambiguous (multiple matches without replace_all).
+    """
+    full = _validate_path(vault, rel_path)
+    if not full.is_file():
+        msg = f"Note not found: {rel_path}"
+        raise FileNotFoundError(msg)
+
+    raw = full.read_text(encoding="utf-8")
+    fm, body = parse_frontmatter(raw)
+
+    count = body.count(old_text)
+    if count == 0:
+        msg = f"Text not found in note body: {old_text[:50]!r}"
+        raise ValueError(msg)
+    if count > 1 and not replace_all:
+        msg = f"Text is ambiguous ({count} occurrences). Use replace_all=True to replace all."
+        raise ValueError(msg)
+
+    if replace_all:
+        new_body = body.replace(old_text, new_text)
+    else:
+        new_body = body.replace(old_text, new_text, 1)
+
+    fm.updated = date.today().isoformat()
+    final = serialize_frontmatter(fm, new_body)
+    full.write_text(final, encoding="utf-8")
+    logger.info("vault.edit", path=rel_path, replacements=count)
+
+    title = fm.title or full.stem
+    return EditResult(path=rel_path, title=title, updated=fm.updated, replacements=count)
+
+
+def append_to_note(
+    vault: Path,
+    rel_path: str,
+    content: str,
+    heading: str | None = None,
+) -> Note:
+    """Append content to a note, optionally under a specific heading.
+
+    If heading is provided, inserts before the next heading of the same
+    or higher level. If the heading doesn't exist, creates it at the end.
+
+    Raises:
+        FileNotFoundError: Note doesn't exist.
+    """
+    full = _validate_path(vault, rel_path)
+    if not full.is_file():
+        msg = f"Note not found: {rel_path}"
+        raise FileNotFoundError(msg)
+
+    raw = full.read_text(encoding="utf-8")
+    fm, body = parse_frontmatter(raw)
+
+    if heading is None:
+        # Simple append to end
+        if body and not body.endswith("\n"):
+            body += "\n"
+        body += content + "\n"
+    else:
+        body = _insert_under_heading(body, heading, content)
+
+    fm.updated = date.today().isoformat()
+    final = serialize_frontmatter(fm, body)
+    full.write_text(final, encoding="utf-8")
+    logger.info("vault.append", path=rel_path, heading=heading)
+
+    title = fm.title or full.stem
+    return Note(path=rel_path, title=title, frontmatter=fm, content=body)
+
+
+def _insert_under_heading(body: str, heading: str, content: str) -> str:
+    """Insert content under a heading, before the next same-or-higher level heading."""
+    lines = body.split("\n")
+    heading_stripped = heading.strip()
+
+    # Determine heading level (count leading #)
+    level = len(heading_stripped) - len(heading_stripped.lstrip("#"))
+
+    # Find the target heading
+    target_idx = None
+    for i, line in enumerate(lines):
+        if line.strip() == heading_stripped:
+            target_idx = i
+            break
+
+    if target_idx is None:
+        # Heading doesn't exist — create at end
+        if body and not body.endswith("\n"):
+            body += "\n"
+        return body + f"\n{heading_stripped}\n{content}\n"
+
+    # Find the end of this section (next heading of same or higher level)
+    insert_idx = len(lines)
+    for i in range(target_idx + 1, len(lines)):
+        line = lines[i]
+        if line.startswith("#"):
+            line_level = len(line) - len(line.lstrip("#"))
+            if line_level <= level:
+                insert_idx = i
+                break
+
+    # Insert content before the next heading, with a blank line
+    insert_line = content
+    # Ensure blank line before if previous line has content
+    if insert_idx > 0 and lines[insert_idx - 1].strip():
+        insert_line = "\n" + insert_line
+
+    lines.insert(insert_idx, insert_line)
+    return "\n".join(lines)
 
 
 def list_notes(vault: Path, rel_path: str = "") -> list[NoteListEntry]:
