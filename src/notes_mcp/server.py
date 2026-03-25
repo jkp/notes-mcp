@@ -147,6 +147,31 @@ import notes_mcp.tools.searching  # noqa: F401, E402
 import notes_mcp.tools.writing  # noqa: F401, E402
 
 
+def _build_app():
+    """Build the ASGI app for HTTP transport."""
+    from starlette.responses import JSONResponse
+
+    _app = mcp.http_app(transport="http", stateless_http=True, path=settings.mcp_path)
+
+    # FastMCP doesn't mount this endpoint but Claude.ai requires it for
+    # OAuth discovery on remote MCP servers (RFC 9728).
+    @_app.route("/.well-known/oauth-protected-resource")
+    async def oauth_protected_resource(request):
+        base = str(settings.oauth_base_url or f"http://{settings.host}:{settings.port}")
+        return JSONResponse(
+            {
+                "resource": base,
+                "authorization_servers": [base],
+            }
+        )
+
+    return _app
+
+
+# Module-level app for uvicorn --reload
+app = _build_app() if settings.transport == "http" else None
+
+
 def main() -> None:
     """Entry point for the MCP server."""
     logger.info(
@@ -159,6 +184,14 @@ def main() -> None:
         log_level=settings.log_level,
     )
     if settings.transport == "http":
-        mcp.run(transport="http", host=settings.host, port=settings.port, stateless_http=True)
+        import uvicorn
+
+        uvicorn.run(
+            app,  # type: ignore[arg-type]
+            host=settings.host,
+            port=settings.port,
+            log_level=settings.log_level.lower(),
+            lifespan="on",
+        )
     else:
         mcp.run()
